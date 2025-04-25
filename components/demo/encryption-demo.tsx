@@ -24,56 +24,67 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
     decrypting: false
   });
 
-  const hasRequiredKeys = algorithm === "kyber" 
-    ? !!demoState.kyberSharedKey 
+  const hasRequiredKeys = algorithm === "kyber"
+    ? !!demoState.kyberSharedKey
     : !!demoState.rsaSharedKey;
 
+  // Fixed encryption function
   const encryptMessage = (message: string, key: string) => {
-    // Generate a random IV
-    const iv = CryptoJS.lib.WordArray.random(16);
-    
-    // Convert the key to the correct format
-    const keyBytes = CryptoJS.enc.Hex.parse(key);
-    
-    // Encrypt the message using AES-GCM
-    const encrypted = CryptoJS.AES.encrypt(message, keyBytes, {
-      iv: iv,
-      mode: CryptoJS.mode.GCM,
-      padding: CryptoJS.pad.NoPadding
-    });
-    
-    // Combine IV and ciphertext
-    const combined = iv.concat(encrypted.ciphertext);
-    
-    // Return as base64 string
-    return CryptoJS.enc.Base64.stringify(combined);
-  };
-
-  const decryptMessage = (encryptedData: string, key: string) => {
     try {
-      // Convert from base64
-      const combined = CryptoJS.enc.Base64.parse(encryptedData);
-      
-      // Extract IV and ciphertext
-      const iv = CryptoJS.lib.WordArray.create(combined.words.slice(0, 4));
-      const ciphertext = CryptoJS.lib.WordArray.create(combined.words.slice(4));
-      
-      // Convert the key to the correct format
-      const keyBytes = CryptoJS.enc.Hex.parse(key);
-      
-      // Decrypt
-      const decrypted = CryptoJS.AES.decrypt(
-        { ciphertext: ciphertext },
-        keyBytes,
+      // Generate a random IV (16 bytes)
+      const iv = CryptoJS.lib.WordArray.random(16);
+
+      // Ensure key is correct length (32 bytes for AES-256)
+      // First, derive a proper length key using SHA-256 if the key length is not appropriate
+      const derivedKey = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(key));
+
+      // Use CBC mode instead of GCM for better compatibility with CryptoJS
+      const encrypted = CryptoJS.AES.encrypt(
+        message,
+        derivedKey,
         {
           iv: iv,
-          mode: CryptoJS.mode.GCM,
-          padding: CryptoJS.pad.NoPadding
+          mode: CryptoJS.mode.CBC,
+          padding: CryptoJS.pad.Pkcs7
         }
       );
-      
+
+      // Combine IV and ciphertext for storage/transmission
+      // Store as: iv:ciphertext in base64
+      return iv.toString(CryptoJS.enc.Hex) + ':' + encrypted.toString();
+    } catch (error) {
+      console.error("Encryption error:", error);
+      throw new Error("Encryption failed");
+    }
+  };
+
+  // Fixed decryption function
+  const decryptMessage = (encryptedData: string, key: string) => {
+    try {
+      // Split the IV and ciphertext
+      const parts = encryptedData.split(':');
+      if (parts.length !== 2) throw new Error("Invalid encrypted data format");
+
+      const iv = CryptoJS.enc.Hex.parse(parts[0]);
+      const ciphertext = parts[1];
+
+      // Derive the same key used for encryption
+      const derivedKey = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(key));
+
+      // Decrypt
+      const decrypted = CryptoJS.AES.decrypt(
+        ciphertext,
+        derivedKey,
+        {
+          iv: iv,
+          mode: CryptoJS.mode.CBC,
+          padding: CryptoJS.pad.Pkcs7
+        }
+      );
+
       return decrypted.toString(CryptoJS.enc.Utf8);
     } catch (error) {
+      console.error("Decryption error:", error);
       throw new Error("Decryption failed");
     }
   };
@@ -103,7 +114,7 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
       const key = algorithm === "kyber" ? demoState.kyberSharedKey : demoState.rsaSharedKey;
       const encrypted = encryptMessage(message, key);
       setEncryptedMessage(encrypted);
-      
+
       toast({
         title: "Message Encrypted",
         description: `Successfully encrypted using ${algorithm.toUpperCase()}-negotiated key.`
@@ -135,7 +146,7 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
       const key = algorithm === "kyber" ? demoState.kyberSharedKey : demoState.rsaSharedKey;
       const decrypted = decryptMessage(encryptedMessage, key);
       setDecryptedMessage(decrypted);
-      
+
       toast({
         title: "Message Decrypted",
         description: `Successfully decrypted using ${algorithm.toUpperCase()}-negotiated key.`
@@ -255,7 +266,12 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
                 </div>
 
                 {encryptedMessage && (
-                  <div className="space-y-2">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-2"
+                  >
                     <label className="text-sm font-medium">
                       Encrypted Message
                     </label>
@@ -273,18 +289,23 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
                         {isLoading.decrypting ? "Decrypting..." : "Decrypt Message"}
                       </Button>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
                 {decryptedMessage && (
-                  <div className="space-y-2">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-2"
+                  >
                     <label className="text-sm font-medium">
                       Decrypted Message
                     </label>
                     <div className="p-3 bg-primary/5 border border-primary/20 rounded-md font-mono text-sm overflow-x-auto whitespace-pre-wrap break-words">
                       {decryptedMessage}
                     </div>
-                  </div>
+                  </motion.div>
                 )}
               </>
             )}
@@ -299,21 +320,21 @@ export function EncryptionDemo({ demoState }: { demoState: any }) {
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <p>
-              For the actual encryption of messages, both the Kyber and RSA key exchange methods 
-              establish a shared secret key that's then used with a symmetric encryption algorithm, 
-              typically AES-GCM (Advanced Encryption Standard in Galois/Counter Mode).
+              For the actual encryption of messages, both the Kyber and RSA key exchange methods
+              establish a shared secret key that's then used with a symmetric encryption algorithm,
+              typically AES-CBC (Advanced Encryption Standard in Cipher Block Chaining mode).
             </p>
             <div className="rounded-md bg-black/20 dark:bg-white/5 p-4 font-mono text-xs">
               <div className="space-y-2">
                 <div><span className="text-chart-1">1.</span> Client and server establish a shared key through Kyber or RSA</div>
-                <div><span className="text-chart-1">2.</span> The shared key is used to initialize AES-GCM encryption</div>
+                <div><span className="text-chart-1">2.</span> The shared key is processed with SHA-256 for consistent length</div>
                 <div><span className="text-chart-1">3.</span> A random initialization vector (IV) is generated</div>
-                <div><span className="text-chart-1">4.</span> Message is encrypted with AES-GCM using the key and IV</div>
+                <div><span className="text-chart-1">4.</span> Message is encrypted with AES-CBC using the key and IV</div>
                 <div><span className="text-chart-1">5.</span> Receiver uses the same key and IV to decrypt the message</div>
               </div>
             </div>
             <p>
-              This hybrid approach combines the benefits of asymmetric cryptography (for secure key exchange) 
+              This hybrid approach combines the benefits of asymmetric cryptography (for secure key exchange)
               with the performance advantages of symmetric encryption (for actual data encryption).
             </p>
           </CardContent>
