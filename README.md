@@ -116,9 +116,6 @@ The application includes comprehensive educational materials about:
 - How CRYSTALS-Kyber works
 - NIST's post-quantum cryptography standardization process
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgements
 
